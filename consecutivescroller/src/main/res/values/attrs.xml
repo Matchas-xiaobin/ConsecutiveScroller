@@ -3,6 +3,8 @@
     <declare-styleable name="ConsecutiveScrollerLayout_Layout">
         <attr name="layout_isConsecutive" format="boolean"/>
         <attr name="layout_isNestedScroll" format="boolean"/>
+        <attr name="layout_isBehind" format="boolean"/>
         <attr name="layout_isSticky" format="boolean"/>
+        <attr name="layout_group" format="integer"/>
     </declare-styleable>
 </resources>

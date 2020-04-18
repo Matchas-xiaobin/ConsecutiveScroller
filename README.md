@@ -30,6 +30,47 @@ implementation 'com.github.donkingliang:ConsecutiveScroller:1.3.0'
 由于Androidx和Android support包不兼容，所以ConsecutiveScroller使用两个版本分别支持使用Androidx和使用Android support包的项目。
 大版本号1使用Android support包，大版本号2使用Androidx。
 
+### 在原基础上新增功能
+
+```groovy
+新增属性 1:是否在 上一个 控件的下方.
+app:layout_isBehind="Boolean"
+默认值: false
+
+作用是:
+一般用于在吸顶的布局下方, 比如TabLayout + RecyclerView 这种组合, 可以做到rv的item不会吸顶的控件遮挡.
+这里实现方式是onlayout中把这个控件的高度减去了上一个控件的高度.
+```
+
+```groovy
+新增属性 2: 是否分组, 赋予相同值的控件会被当做是一个组里的, 建议只在相邻的控件上设置相同的值.
+app:layout_group="Integer"
+默认值: -1
+
+作用是:
+滑动的时候, 会识别第一个可见的控件的group, 如果和上一次识别的不同, 则会调用这个回调, 将当前这个控件和这个控件所在的group传递过来.
+可以利用这个实现和tablayout联动
+mOnScrollChangeListener.onGroupChange(currentView, group)
+```
+
+```groovy
+新增方法: 滑动到指定控件, 并置顶
+scrollToChildView(View view);
+
+作用是:
+效果类似tablayout点击某个tab, 然后, 内容快速滚动到指定的那个内容布局, 并且这个布局对齐到顶部.
+没实现惯性滑动, 就像rv的scrollToPosition一样效果, 直接到目标位置.
+需要注意的是, 仅支持一级的子控件.
+```
+
+```groovy
+onScrollChange(int scrollY, int oldScrollY)
+方法里新增: 
+新增快速滑动的时候，group变化会直接停止滑动, 效果不是很好. 
+此功能 低于一定的滑动速度是不会触发的.
+```
+
+
 ### 基本使用
 
 ConsecutiveScrollerLayout的使用非常简单，把需要滑动的布局作为ConsecutiveScrollerLayout的直接子View即可。

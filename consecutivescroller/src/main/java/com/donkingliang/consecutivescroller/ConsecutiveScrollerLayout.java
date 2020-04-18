@@ -14,13 +14,13 @@ import android.view.animation.Interpolator;
 import android.widget.AbsListView;
 import android.widget.OverScroller;
 
-import java.util.ArrayList;
-import java.util.List;
-
 import androidx.annotation.NonNull;
 import androidx.core.view.NestedScrollingParent;
 import androidx.core.view.NestedScrollingParentHelper;
 import androidx.core.view.ViewCompat;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * @Author donkingliang QQ:1043214265 github:https://github.com/donkingliang
@@ -28,6 +28,8 @@ import androidx.core.view.ViewCompat;
  * @Date 2020/3/13
  */
 public class ConsecutiveScrollerLayout extends ViewGroup implements NestedScrollingParent {
+
+    private final String TAG = ConsecutiveScrollerLayout.class.getSimpleName();
 
     /**
      * 记录布局垂直的偏移量，它是包括了自己的偏移量(mScrollY)和所有子View的偏移量的总和，
@@ -89,6 +91,8 @@ public class ConsecutiveScrollerLayout extends ViewGroup implements NestedScroll
 
     private View mScrollToTopView;
     private int mAdjust;
+
+    private int currentGroup = -1;
 
     // 这是RecyclerView的代码，让ConsecutiveScrollerLayout的fling效果更接近于RecyclerView。
     static final Interpolator sQuinticInterpolator = new Interpolator() {
@@ -153,9 +157,17 @@ public class ConsecutiveScrollerLayout extends ViewGroup implements NestedScroll
 
         List<View> children = getNonGoneChildren();
         int count = children.size();
+        int lastViewheight = 0;
         for (int i = 0; i < count; i++) {
             View child = children.get(i);
-            int bottom = childTop + child.getMeasuredHeight();
+            LayoutParams layoutParams = (LayoutParams) child.getLayoutParams();
+            if (layoutParams.isBehind) {
+                //需要减少高度， 减少的高度为上一个控件的高度
+                lastViewheight = child.getMeasuredHeight() - lastViewheight;
+            } else {
+                lastViewheight = child.getMeasuredHeight();
+            }
+            int bottom = childTop + lastViewheight;
             child.layout(left, childTop, left + child.getMeasuredWidth(), bottom);
             childTop = bottom;
             // 联动容器可滚动最大距离
@@ -392,6 +404,43 @@ public class ConsecutiveScrollerLayout extends ViewGroup implements NestedScroll
     }
 
     /**
+     * 滑动到某个布局的顶部
+     *
+     * @param view 要滑动到的控件, 必须是 一级子控件，否则无效
+     */
+    public void scrollToChildView(View view) {
+        stopScroll();//先停掉所有滑动
+        //滑动到其他布局
+        int scrollToIndex = indexOfChild(view);//要滑动到的子控件位置
+        if (scrollToIndex == -1) return;//没有这个子控件, 不做任何滑动操作
+        View firstView = this.findFirstVisibleView();//当前第一个子控件
+        int currentIndex = indexOfChild(firstView);//当前第一个子控件位置
+        //对到达目标位置时，途经的子控件自身进行滑动操作
+        if (currentIndex > scrollToIndex) {
+            //要滑动到的控件在当前控件的上方
+            View childView;
+            for (int i = currentIndex; i >= scrollToIndex; i--) {
+                childView = getChildAt(i);
+                //如果子控件可以往上滑动，则滑动到自身的顶部
+                scrollChild(childView, ScrollUtils.getScrollTopOffset(childView));
+            }
+        } else if (currentIndex < scrollToIndex) {
+            //要滑动到的控件在当前控件的下方
+            View childView;
+            for (int i = currentIndex; i <= scrollToIndex; i++) {
+                childView = getChildAt(i);
+                //如果子控件可以往下滑动，则滑动到自身的底部
+                scrollChild(childView, ScrollUtils.getScrollBottomOffset(childView));
+            }
+        } else {
+            //要滑动到当前第一个控件的顶部
+            scrollChild(view, ScrollUtils.getScrollTopOffset(view));
+        }
+        //滑动自身到指定控件顶部位置
+        scrollSelf(view.getTop());
+    }
+
+    /**
      * 向上滑动
      *
      * @param offset
@@ -486,9 +535,28 @@ public class ConsecutiveScrollerLayout extends ViewGroup implements NestedScroll
         dispatchScroll(y);
     }
 
+    /**
+     * 滑动变化
+     *
+     * @param scrollY    新位置
+     * @param oldScrollY 上一个位置
+     */
     private void onScrollChange(int scrollY, int oldScrollY) {
         if (mOnScrollChangeListener != null) {
+            //滑动变化通知
             mOnScrollChangeListener.onScrollChange(this, scrollY, oldScrollY);
+            //分组变化通知
+            View view = findFirstVisibleView();
+            LayoutParams layoutParams = (LayoutParams) view.getLayoutParams();
+            int newGroup = layoutParams.group;
+            if (currentGroup != newGroup) {
+                //超过一定的速度就截停
+                if (Math.abs(scrollY - oldScrollY) > 200) {
+                    stopScroll();
+                }
+                currentGroup = newGroup;
+                mOnScrollChangeListener.onGroupChange(view, currentGroup);
+            }
         }
     }
 
@@ -706,7 +774,7 @@ public class ConsecutiveScrollerLayout extends ViewGroup implements NestedScroll
     /**
      * 停止滑动
      */
-    private void stopScroll() {
+    public void stopScroll() {
         mScroller.abortAnimation();
     }
 
@@ -1028,6 +1096,15 @@ public class ConsecutiveScrollerLayout extends ViewGroup implements NestedScroll
          */
         public boolean isSticky = false;
 
+        /**
+         * 设置子view是否在上一个吸顶的View的下方，如果设为true，则给这个子控件的高度减少上一个子控件的高度
+         */
+        public boolean isBehind = false;
+
+        /**
+         * 设置分组，相同值的为一组，建议是相邻的view时才设置相同group
+         */
+        public int group = -1;
 
         public LayoutParams(Context c, AttributeSet attrs) {
             super(c, attrs);
@@ -1035,7 +1112,9 @@ public class ConsecutiveScrollerLayout extends ViewGroup implements NestedScroll
 
             isConsecutive = a.getBoolean(R.styleable.ConsecutiveScrollerLayout_Layout_layout_isConsecutive, true);
             isSticky = a.getBoolean(R.styleable.ConsecutiveScrollerLayout_Layout_layout_isSticky, false);
+            isBehind = a.getBoolean(R.styleable.ConsecutiveScrollerLayout_Layout_layout_isBehind, false);
             isNestedScroll = a.getBoolean(R.styleable.ConsecutiveScrollerLayout_Layout_layout_isNestedScroll, true);
+            group = a.getInt(R.styleable.ConsecutiveScrollerLayout_Layout_layout_group, -1);
             a.recycle();
         }
 
@@ -1051,6 +1130,8 @@ public class ConsecutiveScrollerLayout extends ViewGroup implements NestedScroll
     public interface OnScrollChangeListener {
 
         void onScrollChange(View v, int scrollY, int oldScrollY);
+
+        void onGroupChange(View v, int group);
     }
 
     @Override
